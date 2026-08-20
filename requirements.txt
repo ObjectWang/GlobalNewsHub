@@ -1,0 +1,27 @@
+# GlobalNewsHub runtime dependencies (PRD v3.0 section 1.2)
+# Dev extras:   pip install -e .[dev]
+# Train extras: pip install -e .[train]   (scripts/ only, never shipped)
+
+# GUI framework (LGPL); no PyQt6 / Electron / Tauri
+PySide6>=6.5
+
+# Async networking + RSS parsing; no synchronous requests
+aiohttp>=3.9
+feedparser>=6.0.10
+
+# HTML parsing; no Selenium / Playwright
+beautifulsoup4>=4.12
+lxml>=4.9
+
+# NLP: AutoTokenizer only + ONNX Runtime INT8 inference (PRD section 3.1)
+# No PyTorch / TensorFlow at runtime
+transformers>=4.36
+onnxruntime>=1.15
+
+# Scheduling; no threading.Timer / crontab
+APScheduler>=3.10.4
+
+# YAML config files (config/settings.yaml, config/sources.yaml)
+PyYAML>=6.0.1
+
+# Database: stdlib sqlite3 (SQLite >= 3.35, WAL + FTS5); no ORM

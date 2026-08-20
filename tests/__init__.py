@@ -1,0 +1,1 @@
+"""GlobalNewsHub test suite (pytest)."""

@@ -1,0 +1,204 @@
+# GlobalNewsHub 新闻源配置模板（PRD v3.0 §4.3 / §4.4）
+#
+# 字段契约：
+#   id               源唯一标识，对应 source_health.source_id（§2.3）
+#   name             媒体名，写入 Article.source_media（§2.1）
+#   type             rss | rsshub
+#   url              type=rss 时的原生 RSS 地址（§4.3：直连优先）
+#   fallback_rsshub  type=rss 可选：直连失败时降级的本地 RSSHub 路由（§4.3），
+#                    无则填 null；示例值：/thepaper/featured
+#   route            type=rsshub 时的本地 RSSHub 路由（§4.3：失败再降级公共实例）
+#   category         初始栏目提示，取值见 §2.2 CATEGORIES，分类器可覆盖（§3.2）
+#   region           初始地区提示，取值见 §2.2 REGIONS，即 §3.2 地区分类 Priority 1
+#                    "source_media → 预设映射表" 的映射值
+#   language         语言标记（§2.1 默认 zh-CN）
+#   enabled          是否启用；运行期自动禁用状态存于 source_health 表（§4.4）
+
+sources:
+  # ---- 国内：直连 RSS ----
+  - id: people_politics
+    name: 人民网·时政
+    type: rss
+    url: http://www.people.com.cn/rss/politics.xml
+    fallback_rsshub: null
+    category: politics
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: chinadaily_china
+    name: 中国日报·中国
+    type: rss
+    url: http://www.chinadaily.com.cn/rss/china_rss.xml
+    fallback_rsshub: null
+    category: other
+    region: china
+    language: en
+    enabled: true
+
+  - id: ftchinese_news
+    name: FT中文网
+    type: rss
+    url: http://www.ftchinese.com/rss/news
+    fallback_rsshub: null
+    category: economy
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: solidot
+    name: Solidot
+    type: rss
+    url: https://www.solidot.org/index.rss
+    fallback_rsshub: null
+    category: tech
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: sspai
+    name: 少数派
+    type: rss
+    url: https://sspai.com/feed
+    fallback_rsshub: null
+    category: tech
+    region: china
+    language: zh-CN
+    enabled: true
+
+  # ---- 国内：内嵌 RSSHub 路由 ----
+  - id: weibo_hot
+    name: 微博热搜
+    type: rsshub
+    route: /weibo/search/hot
+    category: life
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: zhihu_hotlist
+    name: 知乎热榜
+    type: rsshub
+    route: /zhihu/hotlist
+    category: life
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: thepaper_featured
+    name: 澎湃新闻·首页
+    type: rsshub
+    route: /thepaper/featured
+    category: other
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: newsflashes_36kr
+    name: 36氪快讯
+    type: rsshub
+    route: /36kr/newsflashes
+    category: economy
+    region: china
+    language: zh-CN
+    enabled: true
+
+  - id: cls_telegraph
+    name: 财联社电报
+    type: rsshub
+    route: /cls/telegraph
+    category: economy
+    region: china
+    language: zh-CN
+    enabled: true
+
+  # ---- 国际：直连 RSS ----
+  - id: bbc_zhongwen
+    name: BBC中文网
+    type: rss
+    url: https://feeds.bbci.co.uk/zhongwen/simp/rss.xml
+    fallback_rsshub: null
+    category: other
+    region: global
+    language: zh-CN
+    enabled: true
+
+  - id: bbc_world
+    name: BBC World
+    type: rss
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    fallback_rsshub: null
+    category: other
+    region: global
+    language: en
+    enabled: true
+
+  - id: nyt_world
+    name: NYTimes World
+    type: rss
+    url: https://rss.nytimes.com/services/xml/rss/nyt/World.xml
+    fallback_rsshub: null
+    category: other
+    region: us
+    language: en
+    enabled: true
+
+  - id: guardian_world
+    name: The Guardian World
+    type: rss
+    url: https://www.theguardian.com/world/rss
+    fallback_rsshub: null
+    category: other
+    region: eu
+    language: en
+    enabled: true
+
+  - id: cnn_world
+    name: CNN World
+    type: rss
+    url: http://rss.cnn.com/rss/edition_world.rss
+    fallback_rsshub: null
+    category: other
+    region: us
+    language: en
+    enabled: true
+
+  - id: aljazeera
+    name: Al Jazeera
+    type: rss
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    fallback_rsshub: null
+    category: other
+    region: me
+    language: en
+    enabled: true
+
+  - id: nhk_news
+    name: NHK 主要ニュース
+    type: rss
+    url: https://www3.nhk.or.jp/rss/news/cat0.xml
+    fallback_rsshub: null
+    category: other
+    region: asia
+    language: ja
+    enabled: true
+
+  - id: hackernews
+    name: Hacker News
+    type: rss
+    url: https://news.ycombinator.com/rss
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: arstechnica
+    name: Ars Technica
+    type: rss
+    url: https://feeds.arstechnica.com/arstechnica/index
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true

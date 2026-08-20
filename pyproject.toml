@@ -1,0 +1,75 @@
+# GlobalNewsHub project metadata, optional dependency extras and tool config.
+# The app runs via `python main.py` and is packaged with PyInstaller (P5.1);
+# the build backend below exists only so `pip install -e .[dev]` works.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "globalnewshub"
+version = "0.1.0"
+description = "Zero-dependency desktop news aggregator: embedded RSSHub + BERT classification, offline-first."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.5",
+    "aiohttp>=3.9",
+    "feedparser>=6.0.10",
+    "beautifulsoup4>=4.12",
+    "lxml>=4.9",
+    "transformers>=4.36",
+    "onnxruntime>=1.15",
+    "APScheduler>=3.10.4",
+    "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "mypy>=1.8",
+    "ruff>=0.2",
+    "pyinstaller>=6.3",
+    "types-PyYAML>=6.0.12",
+]
+train = [
+    # Used only by scripts/ (P3.1-P3.3); never imported by core/ or ui/.
+    "torch>=2.1",
+    "onnx>=1.15",
+    "scikit-learn>=1.3",
+]
+
+[tool.setuptools]
+# Flat layout has multiple top-level packages (core/, ui/, tests/);
+# ship nothing — this file declares dependencies and tool config only.
+py-modules = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+# Third-party libs without (complete) PEP 561 typing; treat as Any so the
+# §8 quality gate `mypy --strict core/` stays green.
+[[tool.mypy.overrides]]
+module = [
+    "feedparser", "feedparser.*",
+    "bs4", "bs4.*",
+    "lxml", "lxml.*",
+    "onnxruntime", "onnxruntime.*",
+    "apscheduler", "apscheduler.*",
+    "transformers", "transformers.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
