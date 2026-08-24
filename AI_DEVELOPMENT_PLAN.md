@@ -5,7 +5,7 @@
 
 ## 质量门禁现状（§8）
 
-- `pytest tests/` → 70 passed（含真实 RSSHub 二进制生命周期用例）
+- `pytest tests/` → 82 passed（含真实 RSSHub 二进制生命周期用例）
 - `mypy --strict core/` → Success（25 个源文件，零错误）
 - `ruff check core/` → All checks passed
 
@@ -73,12 +73,26 @@
 10. **平台注意**：macOS 产物分发前需在 Mac 上 ad-hoc 签名
     （`codesign --sign - rsshub-server-mac`），脚本结尾有提示。
 
-## Phase 3 智能分类 ⏳ 未开始
+## Phase 3 智能分类 🚧 进行中
 
-依赖 THUCNews 数据集与训练环境（GPU 建议）。顺序：
-P3.1 preprocess_thucnews.py → P3.2 train_classifier.py（val F1 ≥ 0.85）
-→ P3.3 export_onnx.py（INT8 ≤ 120MB）→ P3.4 pipeline.py（§3.2 置信度路由）
-→ P3.5 region_classifier.py（三级地区策略）。
+| ID   | 产出物                                   | 验收 |
+| ---- | ---------------------------------------- | ---- |
+| P3.1 | scripts/preprocess_thucnews.py           | ✅ JSONL 格式与标签映射单测 12 用例全过；合成数据 CLI 冒烟通过 |
+| P3.2 | scripts/train_classifier.py              | ⏳ val F1 ≥ 0.85（需真实 THUCNews 数据集 + 训练环境） |
+| P3.3 | scripts/export_onnx.py                   | ⏳ INT8 ≤ 120MB |
+| P3.4 | core/classifier/pipeline.py + bert_classifier.py | ⏳ §3.2 全流程单测覆盖 |
+| P3.5 | core/classifier/region_classifier.py     | ⏳ 三级策略单测覆盖 |
+
+### P3.1 数据契约（P3.2 消费）
+
+- 记录格式（JSONL）：`{"id","title","summary","label","source"}`；
+  summary 上限 300 字（SUMMARY_MAX_CHARS），tokenizer 截断在训练/推理侧做。
+- 标签映射（LABEL_MAP，10→5；military 无 THUCNews 来源，靠人工标注 --extra 补）：
+  时政→politics；财经/股票/房产→economy；科技→tech；
+  教育/社会/体育→life；娱乐/游戏→other。
+- 均衡采样：THUCNews 各 app 标签上限 = total // 标签数（默认 10000，§3.3）；
+  --extra 人工标注整体并入不下采样；80/10/10 按标签分层，固定种子可复现。
+- 支持 UTF-8/GBK 双编码；未知类别目录告警跳过；正文 <20 字的退化文档丢弃。
 
 ## Phase 4 UI 层 ⏳ 未开始
 
