@@ -26,3 +26,10 @@ data/
 Thumbs.db
 .idea/
 .vscode/
+
+# pnpm fallback store (never commit)
+.pnpm-store/
+
+# RSSHub packaged binaries (P2.1 output of scripts/build_rsshub.sh; ~100MB each)
+resources/rsshub-server*
+
