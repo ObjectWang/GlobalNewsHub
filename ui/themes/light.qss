@@ -21,25 +21,40 @@ QGroupBox::title {
     padding: 0 4px;
 }
 
-/* ---- news list: card-like rows -------------------------------------- */
+/* ---- lists -----------------------------------------------------------
+   NOTE: generic QListView (sidebar) stays margin-free — item margins in
+   Qt cause hover-paint bleed over neighbouring rows (user report #1).
+   Card styling is scoped to the news list via its objectName. */
 QListView {
-    background: #ffffff;
+    background: transparent;
     color: #1c1e21;
+}
+QListView::item {
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+QListView::item:selected {
+    background: #1667d9;
+    color: #ffffff;
+}
+
+QListView#news_list_view {
+    background: #ffffff;
     border: 1px solid #e3e5e8;
     border-radius: 8px;
     padding: 4px;
 }
-QListView::item {
+QListView#news_list_view::item {
     padding: 7px 9px;
     margin: 2px 3px;
     border-radius: 6px;
     border-left: 3px solid transparent;
 }
-QListView::item:hover {
+QListView#news_list_view::item:hover {
     background: #eef2f8;
     border-left-color: #9db9dd;
 }
-QListView::item:selected {
+QListView#news_list_view::item:selected {
     background: #1667d9;
     color: #ffffff;
     border-left-color: #0d3f85;

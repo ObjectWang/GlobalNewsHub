@@ -23,6 +23,7 @@ from threading import Thread
 
 from PySide6.QtCore import QObject, Signal
 
+from core import translation
 from core.classifier.bert_classifier import BertClassifier
 from core.classifier.pipeline import ClassificationPipeline
 from core.classifier.region_classifier import RegionClassifier
@@ -35,6 +36,7 @@ from core.fetcher.fetch_orchestrator import (
 from core.models import Article
 from core.storage.crud import get_article, insert_article, list_articles, search_articles
 from core.storage.database import Database
+from core.utils.images import fetch_images_to_cache
 from core.utils.network import HttpClient
 
 logger = logging.getLogger(__name__)
@@ -319,3 +321,85 @@ def _load_classifiers(
         ClassificationPipeline(classifier) if classifier is not None else None,
         region,
     )
+
+
+class ImageWorker(_ThreadWorker):
+    """Download an article's images into the local cache (request #4)."""
+
+    image_ready = Signal(str, str, str)  # article_id, src_url, local_path
+    all_done = Signal(str, list)
+
+    def __init__(
+        self,
+        *,
+        article_id: str,
+        urls: list[str],
+        proxy: str | None = None,
+        cache_base: Path | None = None,
+        client: HttpClient | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._article_id = article_id
+        self._urls = list(urls)
+        self._proxy = proxy or None
+        self._cache_base = cache_base
+        self._client = client
+
+    def run_impl(self) -> None:
+        async def job():
+            client = self._client or HttpClient(
+                proxy=self._proxy, timeout_seconds=15, max_retry=1
+            )
+
+            async def on_saved(url: str, path: Path) -> None:
+                self.image_ready.emit(self._article_id, url, str(path))
+
+            return await fetch_images_to_cache(
+                self._urls, client=client, base=self._cache_base,
+                on_saved=on_saved,
+            )
+
+        mapping = asyncio.run(job())
+        self.all_done.emit(self._article_id, mapping)
+
+
+class TranslateWorker(_ThreadWorker):
+    """Translate one article's text to Chinese on explicit request (#3)."""
+
+    translated = Signal(str, str)  # article_id, zh_text
+    failed_sig = Signal(str, str)  # article_id, error
+
+    def __init__(
+        self,
+        *,
+        article_id: str,
+        text: str,
+        source_lang: str = "auto",
+        proxy: str | None = None,
+        client: HttpClient | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._article_id = article_id
+        self._text = text
+        self._source_lang = source_lang
+        self._proxy = proxy or None
+        self._client = client
+
+    def run_impl(self) -> None:
+        async def job():
+            client = self._client or HttpClient(
+                proxy=self._proxy, timeout_seconds=25, max_retry=1
+            )
+            return await translation.translate_text(
+                self._text, client=client, source_lang=self._source_lang
+            )
+
+        try:
+            zh_text = asyncio.run(job())
+        except Exception as exc:
+            logger.warning("translate %s failed: %s", self._article_id, exc)
+            self.failed_sig.emit(self._article_id, str(exc))
+            return
+        self.translated.emit(self._article_id, zh_text)

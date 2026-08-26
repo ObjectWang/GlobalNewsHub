@@ -139,6 +139,7 @@ class NewsListWidget(QWidget):
 
         self._model = NewsListModel()
         self._view = QListView(self)
+        self._view.setObjectName("news_list_view")  # scoped card styling
         self._view.setModel(self._model)
         self._view.setUniformItemSizes(True)
         self._view.setWordWrap(False)

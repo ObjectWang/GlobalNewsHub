@@ -21,25 +21,39 @@ QGroupBox::title {
     padding: 0 4px;
 }
 
-/* ---- news list: card-like rows -------------------------------------- */
+/* ---- lists -----------------------------------------------------------
+   Generic QListView (sidebar) stays margin-free to avoid hover-paint
+   bleed; card styling is scoped to the news list via objectName. */
 QListView {
-    background: #242629;
+    background: transparent;
     color: #e3e5e8;
+}
+QListView::item {
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+QListView::item:selected {
+    background: #2f6fdb;
+    color: #ffffff;
+}
+
+QListView#news_list_view {
+    background: #242629;
     border: 1px solid #33363b;
     border-radius: 8px;
     padding: 4px;
 }
-QListView::item {
+QListView#news_list_view::item {
     padding: 7px 9px;
     margin: 2px 3px;
     border-radius: 6px;
     border-left: 3px solid transparent;
 }
-QListView::item:hover {
+QListView#news_list_view::item:hover {
     background: #2c2f34;
     border-left-color: #4a7fd0;
 }
-QListView::item:selected {
+QListView#news_list_view::item:selected {
     background: #2f6fdb;
     color: #ffffff;
     border-left-color: #9cc0ff;

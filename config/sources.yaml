@@ -263,3 +263,145 @@ sources:
     region: asia
     language: en
     enabled: true
+
+  # ---- 国际主流媒体全集（用户要求不论可达性全部纳入；不可达源由
+  #      健康管理自动禁用（§4.4），刷新统计中会标注"失败·需代理"） ----
+  - id: reuters_top
+    name: Reuters
+    type: rss
+    url: https://www.reutersagency.com/feed/?best-topics=top-news&post_type=best
+    fallback_rsshub: null
+    category: politics
+    region: global
+    language: en
+    enabled: true
+
+  - id: bloomberg_markets
+    name: Bloomberg Markets
+    type: rss
+    url: https://feeds.bloomberg.com/markets/news.rss
+    fallback_rsshub: null
+    category: economy
+    region: us
+    language: en
+    enabled: true
+
+  - id: wsj_world
+    name: WSJ World
+    type: rss
+    url: https://feeds.a.dj.com/rss/RSSWorld.xml
+    fallback_rsshub: null
+    category: politics
+    region: us
+    language: en
+    enabled: true
+
+  - id: economist_intl
+    name: The Economist
+    type: rss
+    url: https://www.economist.com/international/rss.xml
+    fallback_rsshub: null
+    category: politics
+    region: eu
+    language: en
+    enabled: true
+
+  - id: time_top
+    name: TIME
+    type: rss
+    url: https://time.com/feed/
+    fallback_rsshub: null
+    category: other
+    region: us
+    language: en
+    enabled: true
+
+  - id: newsweek_front
+    name: Newsweek
+    type: rss
+    url: https://www.newsweek.com/rss/front-page
+    fallback_rsshub: null
+    category: other
+    region: us
+    language: en
+    enabled: true
+
+  - id: abcnews_top
+    name: ABC News
+    type: rss
+    url: https://abcnews.go.com/abcnews/topstories
+    fallback_rsshub: null
+    category: other
+    region: us
+    language: en
+    enabled: true
+
+  - id: skynews_world
+    name: Sky News
+    type: rss
+    url: https://feeds.skynews.com/feeds/rss/world.xml
+    fallback_rsshub: null
+    category: politics
+    region: eu
+    language: en
+    enabled: true
+
+  - id: france24_en
+    name: France 24
+    type: rss
+    url: https://www.france24.com/en/rss
+    fallback_rsshub: null
+    category: politics
+    region: eu
+    language: en
+    enabled: true
+
+  - id: dw_english
+    name: DW English
+    type: rss
+    url: https://rss.dw.com/rdf/rss-en-all
+    fallback_rsshub: null
+    category: politics
+    region: eu
+    language: en
+    enabled: true
+
+  - id: dw_chinese
+    name: 德国之声中文
+    type: rss
+    url: https://rss.dw.com/rdf/rss-chi-all
+    fallback_rsshub: null
+    category: politics
+    region: eu
+    language: zh-CN
+    enabled: true
+
+  - id: cbc_world
+    name: CBC World
+    type: rss
+    url: https://www.cbc.ca/webfeed/rss/rss-world
+    fallback_rsshub: null
+    category: politics
+    region: us
+    language: en
+    enabled: true
+
+  - id: nikkei_asia
+    name: Nikkei Asia
+    type: rss
+    url: https://asia.nikkei.com/rss/feed/nar
+    fallback_rsshub: null
+    category: economy
+    region: asia
+    language: en
+    enabled: true
+
+  - id: japantimes_all
+    name: The Japan Times
+    type: rss
+    url: https://www.japantimes.co.jp/feed/
+    fallback_rsshub: null
+    category: other
+    region: asia
+    language: en
+    enabled: true

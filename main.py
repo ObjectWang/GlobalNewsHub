@@ -1,4 +1,4 @@
-"""GlobalNewsHub application entry point (PRD task P4.8).
+﻿"""GlobalNewsHub application entry point (PRD task P4.8).
 
 Assembles the Phase 4 widgets into the MainWindow skeleton and wires
 every signal-slot contract. Hard rule (section 1.2): database IO,
@@ -31,9 +31,16 @@ from ui.news_detail import NewsDetailWidget
 from ui.news_list import NewsListWidget
 from ui.search_bar import SearchBar
 from ui.sidebar import SidebarWidget
-from ui.workers import QueryWorker, RefreshWorker
+from ui.workers import ImageWorker, QueryWorker, RefreshWorker, TranslateWorker
 
 logger = logging.getLogger(__name__)
+
+
+def _detail_of(win):
+    """Return the installed NewsDetailWidget for ``win``."""
+    from ui.news_detail import NewsDetailWidget
+    widgets = win.detail_slot.findChildren(NewsDetailWidget)
+    return widgets[0] if widgets else None
 
 
 class _RefreshBridge(QObject):
@@ -58,6 +65,8 @@ class AppController(QObject):
         self._generation = 0          # stale-reply guard for queries
         self._refresh_worker: RefreshWorker | None = None
         self._query_worker: QueryWorker | None = None
+        self._translate_worker = None
+        self._image_workers: list = []
         self._search_text = ""
         self._scheduler: RefreshScheduler | None = None
 
@@ -82,6 +91,11 @@ class AppController(QObject):
                 )
                 self._scheduler.start()
 
+    def _spawn(self, worker) -> None:
+        """Track and launch a worker (thread teardown is join-based)."""
+        self._query_worker = worker
+        worker.start()
+
     def shutdown(self) -> None:
         """Stop background activity and join threads BEFORE Qt teardown.
 
@@ -93,15 +107,18 @@ class AppController(QObject):
         if self._scheduler is not None:
             self._scheduler.stop()
             self._scheduler = None
-        for attr in ("_refresh_worker", "_query_worker"):
-            worker = getattr(self, attr)
-            if worker is None:
-                continue
+        tracked: list = []
+        for attr in ("_refresh_worker", "_query_worker", "_translate_worker"):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                tracked.append(worker)
+        tracked.extend(getattr(self, "_image_workers", []) or [])
+        for worker in tracked:
             try:
                 if worker.is_running():
                     worker.wait(5000)
             except RuntimeError:
-                pass  # C++ side already destroyed via deleteLater
+                pass  # C++ side already destroyed
 
     # -- slots ------------------------------------------------------------------
 
@@ -143,6 +160,39 @@ class AppController(QObject):
             lambda rows, g=generation: self._on_detail_results(g, rows)
         )
         self._spawn(worker)
+
+    def on_images_requested(self, article_id: str, urls: list) -> None:
+        """Download remote article images into local cache (request #4)."""
+        if not urls:
+            return
+        settings = load_settings(self._settings_path)
+        proxy = str(settings.get("network", {}).get("proxy") or "") or None
+        worker = ImageWorker(article_id=article_id, urls=urls, proxy=proxy)
+        worker.image_ready.connect(
+            lambda aid, url, path: _detail_of(self._win).apply_local_image(
+                aid, url, path
+            )
+        )
+        self._image_workers.append(worker)
+        worker.start()
+
+    def on_translate_requested(self, article_id: str, text: str) -> None:
+        """Translate a non-Chinese article to Chinese (request #3)."""
+        settings = load_settings(self._settings_path)
+        proxy = str(settings.get("network", {}).get("proxy") or "") or None
+        worker = TranslateWorker(
+            article_id=article_id,
+            text=text,
+            source_lang="en",  # gtx auto-detects; mymemory needs a pair
+            proxy=proxy,
+        )
+        detail = _detail_of(self._win)
+        worker.translated.connect(detail.apply_translation)
+        worker.failed_sig.connect(
+            lambda _aid, err: (detail.set_translating(False),
+                               self._win.set_status(f"翻译失败：{err}")))
+        self._translate_worker = worker
+        worker.start()
 
     def start_refresh(self) -> None:
         """Launch a RefreshWorker unless one is already running."""
@@ -256,6 +306,11 @@ def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False,
     news_list.article_selected.connect(controller.on_article_selected)
     controller.bridge_refresh_due.connect(controller.start_refresh)
     win.settings_applied.connect(lambda _: controller.reload_articles())
+
+    detail = _detail_of(win)
+    if detail is not None:
+        detail.images_requested.connect(controller.on_images_requested)
+        detail.translate_requested.connect(controller.on_translate_requested)
 
     if load_initial:
         controller.reload_articles()

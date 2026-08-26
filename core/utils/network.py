@@ -99,3 +99,32 @@ class HttpClient:
         assert last_error is not None
         logger.error("GET %s failed after %d attempts", url, 1 + self._max_retry)
         raise last_error
+
+    async def get_bytes(self, url: str) -> bytes:
+        """GET ``url`` and return raw body bytes (images; same retry law)."""
+        last_error: Exception | None = None
+        delay = _BACKOFF_BASE_SECONDS
+        for attempt in range(1 + self._max_retry):
+            try:
+                async with self._session_factory(headers=self._headers) as session:
+                    async with session.get(
+                        url, timeout=self._timeout, proxy=self._proxy
+                    ) as response:
+                        response.raise_for_status()
+                        data: bytes = await response.read()
+                        return data
+            except Exception as exc:
+                if not _is_retryable(exc):
+                    raise
+                last_error = exc
+                if attempt < self._max_retry:
+                    logger.warning(
+                        "GET %s failed (attempt %d/%d): %s: %s; retrying in %.0fs",
+                        url, attempt + 1, 1 + self._max_retry,
+                        type(exc).__name__, exc, delay,
+                    )
+                    await self._sleep(delay)
+                    delay = min(delay * 2, _BACKOFF_CAP_SECONDS)
+        assert last_error is not None
+        logger.error("GET %s failed after %d attempts", url, 1 + self._max_retry)
+        raise last_error
