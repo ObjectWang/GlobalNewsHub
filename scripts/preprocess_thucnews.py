@@ -32,6 +32,11 @@ Usage:
         --out-dir data/processed \
         --total 10000 --seed 42 \
         [--extra data/manual_annotations.jsonl]
+
+Alternative corpus source: the widely mirrored ``cnews.train.txt``
+single-file export of THUCNews (lines of ``label<TAB>title<TAB>body``)
+can be used instead of a directory tree via ``--cnews``; ``--data-dir``
+becomes optional when any alternative source is given.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import sys
 from pathlib import Path
 from typing import TypedDict
@@ -57,6 +63,7 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_MAX_CHARS: int = 300          # keep JSONL small; tokenizer truncates later
 MIN_BODY_CHARS: int = 20              # shorter bodies carry no training signal
+TITLE_MAX_CHARS: int = 48             # cnews merges title+body; cut heuristic
 TRAIN_RATIO: float = 0.8
 VAL_RATIO: float = 0.1                # test gets the remainder (~0.1)
 
@@ -148,6 +155,66 @@ def load_thucnews(data_dir: Path) -> dict[str, list[Record]]:
     return grouped
 
 
+def load_cnews(path: Path) -> dict[str, list[Record]]:
+    """Load a ``cnews.train.txt``-style single-file THUCNews export.
+
+    Lines are ``label<TAB>text`` where *text* concatenates title and
+    body without a separator (classic cnews format); a three-field
+    ``label<TAB>title<TAB>body`` variant is accepted too. Chinese
+    category names map through LABEL_MAP; categories outside the map
+    (e.g. 家居/时尚) are skipped with one warning per class and exact
+    duplicates are dropped. The record title is the leading slice of
+    the text cut at the first in-sentence boundary (<= 48 chars);
+    ``summary`` keeps the full truncated text.
+    """
+    grouped: dict[str, list[Record]] = {}
+    seen: set[tuple[str, str]] = set()
+    skipped: set[str] = set()
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        label_cn = parts[0].strip()
+        raw_text = " ".join(parts[1].split()).strip() if len(parts) > 1 else ""
+        body = " ".join(parts[2].split()).strip() if len(parts) > 2 else ""
+        if not raw_text:
+            logger.warning("%s:%d: missing title, skipping", path, line_number)
+            continue
+        label = LABEL_MAP.get(label_cn)
+        if label is None:
+            if label_cn not in skipped:
+                skipped.add(label_cn)
+                logger.warning(
+                    "Skipping cnews class not in LABEL_MAP: %s", label_cn
+                )
+            continue
+        if len(parts) >= 3:
+            title, summary = raw_text, body[:SUMMARY_MAX_CHARS]
+        else:
+            match = re.search(r"[。！？；]", raw_text)
+            cut = match.start() if match and match.start() <= TITLE_MAX_CHARS \
+                else TITLE_MAX_CHARS
+            title, summary = raw_text[:cut], raw_text[:SUMMARY_MAX_CHARS]
+        if not title or len(summary) < MIN_BODY_CHARS:
+            continue
+        key = (label, title)
+        if key in seen:
+            continue
+        seen.add(key)
+        grouped.setdefault(label, []).append(
+            Record(
+                id="cn-" + hashlib.sha1(line.encode("utf-8")).hexdigest()[:12],
+                title=title,
+                summary=summary,
+                label=label,
+                source="thucnews-cnews",
+            )
+        )
+    return grouped
+
+
 def load_extra(path: Path) -> list[Record]:
     """Load an extra JSONL file (e.g. manual annotations); validate it.
 
@@ -224,21 +291,32 @@ def _write_jsonl(path: Path, records: list[Record]) -> None:
 
 def build_dataset(
     *,
-    data_dir: Path,
-    out_dir: Path,
+    data_dir: Path | None = None,
+    cnews_file: Path | None = None,
+    out_dir: Path = Path("data/processed"),
     total: int,
     seed: int,
     extra_files: list[Path] | None = None,
 ) -> dict[str, object]:
     """Run the full pipeline; write splits + stats.json; return the stats.
 
-    THUCNews documents are balanced across labels and sampled down to
-    ``total``; extra files (manual annotations) are merged whole.
+    The base pool comes from a THUCNews directory tree and/or a
+    ``cnews`` single-file export (merged before balancing); extra files
+    (manual annotations, e.g. military) are merged whole.
     """
     rng = random.Random(seed)
-    grouped = load_thucnews(Path(data_dir))
+    grouped: dict[str, list[Record]] = {}
+    if data_dir is not None:
+        for label, records in load_thucnews(Path(data_dir)).items():
+            grouped.setdefault(label, []).extend(records)
+    if cnews_file is not None:
+        for label, records in load_cnews(Path(cnews_file)).items():
+            grouped.setdefault(label, []).extend(records)
     if not grouped:
-        raise ValueError(f"No usable THUCNews categories under {data_dir}")
+        raise ValueError(
+            "No usable corpus: provide --data-dir and/or --cnews with "
+            "mappable categories"
+        )
     sampled = _balanced_sample(grouped, total, rng)
 
     train: list[Record] = []
@@ -292,7 +370,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Preprocess THUCNews into balanced train/val/test JSONL."
     )
-    parser.add_argument("--data-dir", required=True, help="THUCNews root (category subdirs)")
+    parser.add_argument(
+        "--data-dir", default=None,
+        help="THUCNews root (category subdirs); optional when --cnews is given",
+    )
+    parser.add_argument(
+        "--cnews", type=Path, default=None,
+        help="cnews.train.txt-style single-file export used as base corpus",
+    )
     parser.add_argument("--out-dir", required=True, help="output directory for JSONL + stats.json")
     parser.add_argument(
         "--total",
@@ -311,7 +396,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         build_dataset(
-            data_dir=Path(args.data_dir),
+            data_dir=Path(args.data_dir) if args.data_dir else None,
+            cnews_file=args.cnews,
             out_dir=Path(args.out_dir),
             total=args.total,
             seed=args.seed,

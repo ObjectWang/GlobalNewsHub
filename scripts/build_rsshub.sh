@@ -257,15 +257,20 @@ BANNER="import { createRequire as __cr } from 'node:module'; import { fileURLToP
 
 # --- 7. stage assets -----------------------------------------------------------
 # simplecc-wasm reads <__dirname>/simplecc_wasm_bg.wasm; RSSHub core reads
-# ../quickjs.wasm relative to the entry. Stage both where the packaged
-# entry will see them (bundle/ and its parent), and declare them as pkg
-# assets so the SEA archive includes them.
-log "staging wasm assets"
+# ../quickjs.wasm relative to the entry; header-generator (got header
+# spoofing) reads <__dirname>/data_files/*.json|zip. Stage all where the
+# packaged entry will see them (bundle/ and its parent), and declare them
+# as pkg assets so the SEA archive includes them.
+log "staging wasm + data_files assets"
 SIMPLECC_WASM="$(find -L "$SRC_DIR/node_modules" -path "*simplecc-wasm*/simplecc_wasm_bg.wasm" | head -n 1)"
 QUICKJS_WASM="$(find -L "$SRC_DIR/node_modules" -path "*quickjs-wasi*/quickjs.wasm" | head -n 1)"
 [ -n "$SIMPLECC_WASM" ] || { echo "simplecc_wasm_bg.wasm not found" >&2; exit 1; }
 cp "$SIMPLECC_WASM" "$BUNDLE_DIR/simplecc_wasm_bg.wasm"
 if [ -n "$QUICKJS_WASM" ]; then cp "$QUICKJS_WASM" "$BUILD_DIR/quickjs.wasm"; fi
+HEADER_GEN_DATA_FILES="$(find -L "$SRC_DIR/node_modules" -path "*header-generator*/data_files" -type d | head -n 1)"
+[ -n "$HEADER_GEN_DATA_FILES" ] || { echo "header-generator data_files not found" >&2; exit 1; }
+mkdir -p "$BUNDLE_DIR/data_files"
+cp -r "$HEADER_GEN_DATA_FILES"/. "$BUNDLE_DIR/data_files"/
 cat > "$BUNDLE_DIR/package.json" <<'PKGJSON_EOF'
 {
   "name": "rsshub-bundle",
@@ -273,7 +278,16 @@ cat > "$BUNDLE_DIR/package.json" <<'PKGJSON_EOF'
   "type": "module",
   "private": true,
   "bin": { "rsshub": "./rsshub.mjs" },
-  "pkg": { "assets": ["./simplecc_wasm_bg.wasm", "../quickjs.wasm"] }
+  "pkg": {
+    "assets": [
+      "./simplecc_wasm_bg.wasm",
+      "../quickjs.wasm",
+      "./data_files/headers-order.json",
+      "./data_files/browser-helper-file.json",
+      "./data_files/header-network-definition.zip",
+      "./data_files/input-network-definition.zip"
+    ]
+  }
 }
 PKGJSON_EOF
 

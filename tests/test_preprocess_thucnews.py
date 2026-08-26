@@ -243,6 +243,77 @@ def test_extra_jsonl_rejects_bad_label(tmp_path: Path) -> None:
 # ---------------------------------------------------------------- CLI
 
 
+# ---------------------------------------------------------------- cnews
+
+
+def _write_cnews(path: Path, rows: list[tuple[str, str, str]]) -> None:
+    path.write_text(
+        "\n".join(f"{cn}\t{title}\t{body}" for cn, title, body in rows) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_load_cnews_maps_and_skips_unknown_classes(tmp_path: Path) -> None:
+    path = tmp_path / "cnews.train.txt"
+    body = "正文内容足够长，包含有效训练信号。" * 3
+    _write_cnews(path, [
+        ("时政", "两会召开", body),
+        ("财经", "央行降准", body),
+        ("家居", "沙发选购指南", body),   # not in LABEL_MAP -> skipped
+        ("时政", "两会召开", body),       # duplicate (label,title) -> dropped
+        ("时政", "缺正文的标题", ""),     # degenerate -> dropped
+    ])
+    grouped = pp.load_cnews(path)
+    assert set(grouped) == {"politics", "economy"}
+    assert [r["title"] for r in grouped["politics"]] == ["两会召开"]
+    assert all(r["source"] == "thucnews-cnews" for r in
+               grouped["politics"] + grouped["economy"])
+
+
+def test_build_dataset_with_cnews_and_military_extra(tmp_path: Path) -> None:
+    cnews = tmp_path / "cnews.train.txt"
+    body = "这是足够长的正文内容，用于训练与测试。" * 5
+    rows: list[tuple[str, str, str]] = []
+    for i in range(30):
+        rows.append(("时政", f"时政新闻第{i}号", body))
+        rows.append(("科技", f"科技新闻第{i}号", body))
+    _write_cnews(cnews, rows)
+
+    extra = tmp_path / "military.jsonl"
+    extra.write_text(
+        "\n".join(
+            json.dumps({"id": f"mil-{i}", "title": f"军演第{i}号",
+                        "summary": "东部战区组织多军兵种联合演习",
+                        "label": "military", "source": "manual"},
+                       ensure_ascii=False)
+            for i in range(6)
+        ),
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "processed"
+    stats = pp.build_dataset(
+        cnews_file=cnews, out_dir=out_dir, total=20, seed=42,
+        extra_files=[extra],
+    )
+    records = (
+        _read_jsonl(out_dir / "train.jsonl")
+        + _read_jsonl(out_dir / "val.jsonl")
+        + _read_jsonl(out_dir / "test.jsonl")
+    )
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[str(record["label"])] = counts.get(str(record["label"]), 0) + 1
+    assert counts["military"] == 6          # extras merged whole
+    assert counts["politics"] == 10         # balanced base pool
+    assert counts["tech"] == 10
+    assert stats["sources"] == {"manual": 6, "thucnews-cnews": 20}
+
+
+def test_main_cli_requires_a_corpus_source(tmp_path: Path) -> None:
+    code = pp.main(["--out-dir", str(tmp_path / "out"), "--total", "40"])
+    assert code == 1
+
+
 def test_main_cli_end_to_end(tmp_path: Path) -> None:
     data_dir = tmp_path / "thucnews"
     _make_tree(data_dir)
