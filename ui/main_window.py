@@ -66,7 +66,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(_WINDOW_TITLE)
         self.resize(1280, 800)
+        self.setMinimumSize(960, 620)
         self._settings_path: Path | None = None
+        self._report_dialog: QWidget | None = None
         self._build_central()
         self._build_actions()
         self._build_menus()
@@ -153,6 +155,16 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, theme)
+
+    def show_refresh_report(self, rows: list) -> None:
+        """Show/raise the per-source refresh statistics (user request #4)."""
+        from ui.refresh_report import RefreshReportDialog
+
+        if self._report_dialog is None:
+            self._report_dialog = RefreshReportDialog(self)
+        self._report_dialog.load_rows(rows)
+        self._report_dialog.show()
+        self._report_dialog.raise_()
 
     # ------------------------------------------------------------------
     # Construction helpers

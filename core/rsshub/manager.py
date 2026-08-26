@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 from core.utils import platform_utils
 
@@ -47,6 +47,10 @@ _MAX_PORT_ATTEMPTS = 100
 # under the read-only app root (_MEIPASS when bundled), the server log
 # under the writable data dir next to the executable.
 _RESOURCES_DIR = platform_utils.resources_dir()
+
+# Windows-only: suppress the console window of the console-subsystem
+# binary when spawned from a windowed app (user report, Phase 5 QA).
+_CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 def log_path() -> Path:
@@ -148,6 +152,11 @@ class RSSHubManager:
             return False
         self._port = self._find_available_port()
         env = {**os.environ, "PORT": str(self._port), "NODE_ENV": "production"}
+        popen_kwargs: dict[str, Any] = {}
+        if sys.platform == "win32":
+            # Console-subsystem binary spawned from a windowed (PyInstaller)
+            # app would flash a console window per refresh without this.
+            popen_kwargs["creationflags"] = _CREATE_NO_WINDOW
         try:
             self._log_handle = _open_log()
             self._process = self._popen_factory(
@@ -156,6 +165,7 @@ class RSSHubManager:
                 stdout=self._log_handle,
                 stderr=subprocess.STDOUT,
                 cwd=str(binary.parent),
+                **popen_kwargs,
             )
         except OSError:
             logger.exception("Failed to spawn RSSHub binary %s", binary)

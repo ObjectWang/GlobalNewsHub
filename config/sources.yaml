@@ -202,3 +202,64 @@ sources:
     region: us
     language: en
     enabled: true
+
+  # ---- 国际：实测国内直连可达补充 ----
+  - id: theverge_tech
+    name: The Verge
+    type: rss
+    url: https://www.theverge.com/rss/index.xml
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: techcrunch_tech
+    name: TechCrunch
+    type: rss
+    url: https://techcrunch.com/feed/
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: engadget_tech
+    name: Engadget
+    type: rss
+    url: https://www.engadget.com/rss.xml
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: zdnet_tech
+    name: ZDNet
+    type: rss
+    url: https://www.zdnet.com/news/rss.xml
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: mac9to5
+    name: 9to5Mac
+    type: rss
+    url: https://9to5mac.com/feed/
+    fallback_rsshub: null
+    category: tech
+    region: us
+    language: en
+    enabled: true
+
+  - id: yonhap_asia
+    name: 韩联社(英文)
+    type: rss
+    url: https://en.yna.co.kr/RSS/news.xml
+    fallback_rsshub: null
+    category: other
+    region: asia
+    language: en
+    enabled: true

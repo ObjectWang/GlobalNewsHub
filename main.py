@@ -167,6 +167,8 @@ class AppController(QObject):
         self._refresh_worker.progress.connect(
             lambda msg: self._win.set_status(f"抓取 {msg}"))
         self._refresh_worker.articles_stored.connect(self._on_stored)
+        self._refresh_worker.refresh_report.connect(
+            lambda rows, n=None: self._win.show_refresh_report(rows))
         self._refresh_worker.finished_ok.connect(
             lambda n: self._win.set_status(f"刷新完成，新增 {n} 篇"))
         self._refresh_worker.failed.connect(

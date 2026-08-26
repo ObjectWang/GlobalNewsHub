@@ -42,12 +42,12 @@ _REGION_LABELS: Final[dict[str, str]] = {
 _PLACEHOLDER: Final = "<p style='color:gray;'>选择左侧新闻以阅读详情…</p>"
 
 _TEMPLATE: Final = """
-<h2>{title}</h2>
-<p style='color:#666;'>
+<h2 style="font-size:19px; margin:2px 0 10px 0; line-height:140%;">{title}</h2>
+<p style="color:#8a8f96; font-size:12px; margin:0 0 6px 0;">
 来源：{source} · {published} · 栏目：{category} · 地区：{region}
 </p>
 <hr/>
-<div>{body}</div>
+<div style="font-size:14px; line-height:160%;">{body}</div>
 <p><a href="{url}">阅读原文（{source}）</a></p>
 """
 

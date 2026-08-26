@@ -111,6 +111,7 @@ class RefreshWorker(_ThreadWorker):
 
     progress = Signal(str)
     articles_stored = Signal(list)
+    refresh_report = Signal(list)
     finished_ok = Signal(int)
     failed = Signal(str)
 
@@ -154,6 +155,7 @@ class RefreshWorker(_ThreadWorker):
 
     async def _refresh(self) -> list[Article]:
         sources = [s for s in load_sources(self._sources_path) if s.enabled]
+        name_by_id = {s.id: s.name for s in sources}
         http_client = (
             HttpClient(proxy=self._proxy) if self._proxy else None
         )
@@ -177,13 +179,29 @@ class RefreshWorker(_ThreadWorker):
         pipeline, region = _load_classifiers(self._models_dir)
 
         stored: list[Article] = []
-        for result in results.values():
-            self.progress.emit(f"{result.source_id}: {'OK' if result.ok else '失败'}")
+        new_counts: dict[str, int] = {}
+        for source_id, result in results.items():
+            self.progress.emit(f"{source_id}: {'OK' if result.ok else '失败'}")
             for article in result.articles:
                 classify_article(article, pipeline, region)
                 inserted_id = insert_article(db, article)
                 if inserted_id == article.id:  # dedup returns existing id
                     stored.append(article)
+                    new_counts[source_id] = new_counts.get(source_id, 0) + 1
+
+        self.refresh_report.emit(
+            [
+                {
+                    "source_id": source_id,
+                    "name": name_by_id.get(source_id, source_id),
+                    "ok": result.ok,
+                    "channel": result.channel,
+                    "new": new_counts.get(source_id, 0),
+                    "error": result.errors[-1] if result.errors else "",
+                }
+                for source_id, result in results.items()
+            ]
+        )
         return stored
 
     def _ensure_rsshub(self):

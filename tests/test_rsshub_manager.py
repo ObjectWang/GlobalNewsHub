@@ -271,3 +271,32 @@ def test_real_binary_start_healthz_stop() -> None:
     finally:
         manager.stop()
     assert manager.is_alive() is False
+
+
+def test_spawn_suppresses_console_window_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """User-reported flash: console binary must spawn without a window."""
+    factory = _FakePopenFactory()
+    manager = _make_manager(tmp_path, factory)
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert manager.start() is True
+    try:
+        kwargs = factory.spawned[0].kwargs
+        assert kwargs.get("creationflags") == 0x08000000  # CREATE_NO_WINDOW
+    finally:
+        manager.stop()
+
+
+def test_spawn_omits_creationflags_off_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    factory = _FakePopenFactory()
+    manager = _make_manager(tmp_path, factory)
+    (tmp_path / "rsshub-server-linux").write_bytes(b"fake")
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert manager.start() is True
+    try:
+        assert "creationflags" not in factory.spawned[0].kwargs
+    finally:
+        manager.stop()
