@@ -1,0 +1,9 @@
+{
+  "name": "category_classifier",
+  "opset": 14,
+  "size_mb": 98.24453830718994,
+  "parity": {
+    "max_abs_diff": 2.086867094039917,
+    "argmax_agree": false
+  }
+}
