@@ -365,16 +365,17 @@ class ImageWorker(_ThreadWorker):
 
 
 class TranslateWorker(_ThreadWorker):
-    """Translate one article's text to Chinese on explicit request (#3)."""
+    """Translate one article's title+body to Chinese on request (#3)."""
 
-    translated = Signal(str, str)  # article_id, zh_text
+    translated = Signal(str, str, str)  # article_id, title_zh, body_zh
     failed_sig = Signal(str, str)  # article_id, error
 
     def __init__(
         self,
         *,
         article_id: str,
-        text: str,
+        title: str,
+        body: str,
         source_lang: str = "auto",
         proxy: str | None = None,
         client: HttpClient | None = None,
@@ -382,24 +383,69 @@ class TranslateWorker(_ThreadWorker):
     ) -> None:
         super().__init__(parent)
         self._article_id = article_id
-        self._text = text
+        self._title = title
+        self._body = body
         self._source_lang = source_lang
         self._proxy = proxy or None
         self._client = client
 
     def run_impl(self) -> None:
-        async def job():
+        async def one(text: str) -> str:
             client = self._client or HttpClient(
-                proxy=self._proxy, timeout_seconds=25, max_retry=1
+                proxy=self._proxy,
+                timeout_seconds=translation._TRANSLATE_TIMEOUT_S,
+                max_retry=0,
             )
             return await translation.translate_text(
-                self._text, client=client, source_lang=self._source_lang
+                text, client=client, source_lang=self._source_lang
             )
 
+        async def job():
+            # Title and body race the providers independently.
+            title_task = asyncio.create_task(one(self._title))
+            body_task = asyncio.create_task(one(self._body))
+            title_zh = await title_task
+            try:
+                body_zh = await body_task
+            except Exception as exc:
+                logger.warning("body translation failed (%s); title only", exc)
+                body_zh = ""
+            return title_zh, body_zh
+
         try:
-            zh_text = asyncio.run(job())
+            title_zh, body_zh = asyncio.run(job())
         except Exception as exc:
             logger.warning("translate %s failed: %s", self._article_id, exc)
             self.failed_sig.emit(self._article_id, str(exc))
             return
-        self.translated.emit(self._article_id, zh_text)
+        self.translated.emit(self._article_id, title_zh, body_zh)
+
+
+class TranslateTitlesWorker(_ThreadWorker):
+    """Batch-translate list titles in one provider call (request: 一键翻译)."""
+
+    item_translated = Signal(str, str)  # article_id, zh_title
+    finished_count = Signal(int)
+
+    def __init__(
+        self,
+        *,
+        items: list[tuple[str, str]],
+        proxy: str | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._items = list(items)
+        self._proxy = proxy or None
+
+    def run_impl(self) -> None:
+        titles = [t for _, t in self._items]
+        results = asyncio.run(
+            translation.translate_titles_batch(titles)
+        )
+        count = 0
+        for (article_id, original), zh in zip(self._items, results, strict=True):
+            if zh and zh != original:
+                self.item_translated.emit(article_id, zh)
+                count += 1
+        self.finished_count.emit(count)

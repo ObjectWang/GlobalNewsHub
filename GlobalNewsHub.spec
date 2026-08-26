@@ -110,6 +110,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="GlobalNewsHub",
+    icon="resources/icons/globalnewshub.ico",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

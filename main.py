@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
 
 from core.fetcher.scheduler import RefreshScheduler
 from core.utils import platform_utils
@@ -31,7 +31,13 @@ from ui.news_detail import NewsDetailWidget
 from ui.news_list import NewsListWidget
 from ui.search_bar import SearchBar
 from ui.sidebar import SidebarWidget
-from ui.workers import ImageWorker, QueryWorker, RefreshWorker, TranslateWorker
+from ui.workers import (
+    ImageWorker,
+    QueryWorker,
+    RefreshWorker,
+    TranslateTitlesWorker,
+    TranslateWorker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +72,8 @@ class AppController(QObject):
         self._refresh_worker: RefreshWorker | None = None
         self._query_worker: QueryWorker | None = None
         self._translate_worker = None
+        self._titles_worker = None
+        self._translate_all_btn = None
         self._image_workers: list = []
         self._search_text = ""
         self._scheduler: RefreshScheduler | None = None
@@ -180,9 +188,12 @@ class AppController(QObject):
         """Translate a non-Chinese article to Chinese (request #3)."""
         settings = load_settings(self._settings_path)
         proxy = str(settings.get("network", {}).get("proxy") or "") or None
+        article = self._find_article(article_id)
+        title = article.title if article else text
         worker = TranslateWorker(
             article_id=article_id,
-            text=text,
+            title=title,
+            body=text,
             source_lang="en",  # gtx auto-detects; mymemory needs a pair
             proxy=proxy,
         )
@@ -193,6 +204,56 @@ class AppController(QObject):
                                self._win.set_status(f"翻译失败：{err}")))
         self._translate_worker = worker
         worker.start()
+
+    def register_button(self, button) -> None:
+        """Keep a reference to the 翻译全部标题 button (enable/disable)."""
+        self._translate_all_btn = button
+
+    def translate_all_titles(self) -> None:
+        """Batch-translate visible foreign titles (request: 一键翻译所有标题)."""
+        if getattr(self, "_titles_worker", None) is not None and \
+                self._titles_worker.is_running():
+            self._win.set_status("标题翻译进行中…")
+            return
+        articles = list(self._list.model()._articles)
+        items = [
+            (a.id, a.title)
+            for a in articles
+            if not a.language.lower().startswith("zh")
+            and a.id not in self._list.model()._translations
+        ]
+        if not items:
+            self._win.set_status("没有需要翻译的外文标题")
+            return
+        settings = load_settings(self._settings_path)
+        proxy = str(settings.get("network", {}).get("proxy") or "") or None
+        btn = getattr(self, "_translate_all_btn", None)
+        if btn is not None:
+            btn.setEnabled(False)
+        worker = TranslateTitlesWorker(items=items, proxy=proxy)
+        done = {"n": 0}
+
+        def on_item_apply(aid: str, zh: str) -> None:
+            self._list.model().set_translation(aid, zh)
+            done["n"] += 1
+            self._win.set_status(f"标题翻译中… {done['n']}/{len(items)}")
+
+        worker.item_translated.connect(on_item_apply)
+        btn_ref = getattr(self, "_translate_all_btn", None)
+        worker.finished_count.connect(
+            lambda c: (
+                self._win.set_status(f"标题翻译完成：{c} 条"),
+                None if btn_ref is None else btn_ref.setEnabled(True),
+            )
+        )
+        self._titles_worker = worker
+        worker.start()
+
+    def _find_article(self, article_id: str):
+        for article in self._list.model()._articles:
+            if article.id == article_id:
+                return article
+        return None
 
     def start_refresh(self) -> None:
         """Launch a RefreshWorker unless one is already running."""
@@ -287,10 +348,22 @@ def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False,
 
     news_list = NewsListWidget()
     search_bar = SearchBar()
+
+    translate_all_btn = QPushButton("翻译全部标题")
+    translate_all_btn.setToolTip("将当前列表中的外文标题批量译为中文")
+
+    from PySide6.QtWidgets import QHBoxLayout
+
+    top_row = QWidget(win)
+    top_layout = QHBoxLayout(top_row)
+    top_layout.setContentsMargins(0, 0, 0, 0)
+    top_layout.addWidget(search_bar, stretch=1)
+    top_layout.addWidget(translate_all_btn)
+
     center = QWidget(win)
     layout = QVBoxLayout(center)
     layout.setContentsMargins(6, 6, 6, 0)
-    layout.addWidget(search_bar)
+    layout.addWidget(top_row)
     layout.addWidget(news_list, stretch=1)
     win.replace_list(center)
 
@@ -311,6 +384,10 @@ def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False,
     if detail is not None:
         detail.images_requested.connect(controller.on_images_requested)
         detail.translate_requested.connect(controller.on_translate_requested)
+
+    translate_all_btn.clicked.connect(controller.translate_all_titles)
+    translate_all_btn.clicked.connect(
+        lambda: controller.register_button(translate_all_btn))
 
     if load_initial:
         controller.reload_articles()

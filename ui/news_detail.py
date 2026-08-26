@@ -104,22 +104,23 @@ class NewsDetailWidget(QWidget):
             return
         self._current_url = article.source_url
         self._current_id = article.id
-        self._source_text_cache = translation.source_text(article)
-        html_doc = _TEMPLATE.format(
-            title=html.escape(article.title),
-            source=html.escape(article.source_media),
-            published=(article.published_at or article.fetched_at)
+        self._title_original = html.escape(article.title)
+        self._tmpl_kwargs: dict[str, str] = {
+            "title": self._title_original,
+            "source": html.escape(article.source_media),
+            "published": (article.published_at or article.fetched_at)
             .replace("T", " ")[:16],
-            category=_CATEGORY_LABELS.get(article.category, article.category)
+            "category": _CATEGORY_LABELS.get(article.category, article.category)
             if article.category in CATEGORIES
             else article.category,
-            region=_REGION_LABELS.get(article.region, article.region)
+            "region": _REGION_LABELS.get(article.region, article.region)
             if article.region in REGIONS
             else article.region,
-            body=self._render_body(article),
-            url=html.escape(article.source_url, quote=True),
-        )
-        self._set_html(html_doc)
+            "body": self._render_body(article),
+            "url": html.escape(article.source_url, quote=True),
+        }
+        self._source_text_cache = translation.source_text(article)
+        self._set_html(_TEMPLATE.format(**self._tmpl_kwargs))
         self._translate_btn.setVisible(translation.needs_translation(article))
         image_urls = extract_image_urls(article.content or "")
         if image_urls:
@@ -143,23 +144,33 @@ class NewsDetailWidget(QWidget):
         self._browser.setHtml(self._last_html)
         bar.setValue(min(pos, bar.maximum()))
 
-    def apply_translation(self, article_id: str, zh_text: str) -> None:
-        """Prepend the translated paragraph above the original (#3)."""
+    def apply_translation(self, article_id: str, title_zh: str, body_zh: str) -> None:
+        """Show translated title above original; prepend body block (#3)."""
         if article_id != self._current_id:
             return
-        block = (
-            '<div style="background:rgba(47,111,219,0.10);'
-            'border-left:4px solid #2f6fdb; padding:8px 10px;'
-            'border-radius:6px; margin-bottom:10px;">'
-            f"{html.escape(zh_text)}</div>"
-        )
-        marker = '<hr/>'
-        if marker in self._last_html:
-            self._set_html(self._last_html.replace(marker, block + marker, 1))
-        else:
-            self._set_html(block + self._last_html)
+        kwargs = dict(self._tmpl_kwargs)
+        if title_zh:
+            kwargs["title"] = (
+                f"{html.escape(title_zh)}<br/>"
+                f'<span style="font-size:13px;color:#8a8f96;">'
+                f"{self._title_original}</span>"
+            )
+        if body_zh:
+            block = (
+                '<div style="background:rgba(47,111,219,0.10);'
+                'border-left:4px solid #2f6fdb; padding:8px 10px;'
+                'border-radius:6px; margin-bottom:10px;">'
+                f"{html.escape(body_zh)}</div>"
+            )
+            marker = "<hr/>"
+            body = str(kwargs["body"])
+            if marker in body:
+                kwargs["body"] = body.replace(marker, block + marker, 1)
+            else:
+                kwargs["body"] = block + body
         self._translate_btn.setEnabled(True)
         self._translate_btn.setText("已翻译")
+        self._set_html(_TEMPLATE.format(**kwargs))
 
     def set_translating(self, busy: bool) -> None:
         """Toggle the translate button while a request is in flight."""

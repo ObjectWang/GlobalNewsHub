@@ -115,7 +115,7 @@ def test_apply_translation_prepends_block(qapp) -> None:
     view = NewsDetailWidget()
     view.show_article(make_article(language="en"))
     before = view.to_plain_text()
-    view.apply_translation("id-9", "这是翻译后的中文内容")
+    view.apply_translation("id-9", "科技综述(译)", "这是翻译后的中文内容")
     after = view.to_plain_text()
     assert "这是翻译后的中文内容" in after
     assert "lead" in after and "阅读原文" in after  # original preserved below

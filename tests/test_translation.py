@@ -1,4 +1,4 @@
-"""Translation service unit tests (request #3)."""
+﻿"""Translation service unit tests (request #3, racing providers)."""
 
 from __future__ import annotations
 
@@ -11,18 +11,14 @@ from core.models import Article  # noqa: E402
 
 
 class FakeClient:
-    """HttpClient stand-in scripting ordered get_text responses."""
+    """HttpClient stand-in; raises if a provider actually hits network."""
 
-    def __init__(self, responses: list) -> None:
-        self.responses = list(responses)
+    def __init__(self) -> None:
         self.calls: list[str] = []
 
     async def get_text(self, url: str) -> str:
         self.calls.append(url)
-        item = self.responses.pop(0)
-        if isinstance(item, Exception):
-            raise item
-        return item
+        raise AssertionError("network disabled in unit test")
 
 
 def make_article(lang: str = "en") -> Article:
@@ -35,33 +31,84 @@ def make_article(lang: str = "en") -> Article:
     )
 
 
+def patch_providers(monkeypatch: pytest.MonkeyPatch, gtx, mymemory) -> None:
+    async def g(text, http, sl):
+        return await asyncio.sleep(0) or gtx(text)
+
+    async def m(text, http, sl):
+        return await asyncio.sleep(0) or mymemory(text)
+
+    async def g_wrap(text, http, sl):  # propagate exceptions naturally
+        return gtx(text)
+
+    async def m_wrap(text, http, sl):
+        return mymemory(text)
+
+    monkeypatch.setattr(translation, "_via_gtx", g_wrap)
+    monkeypatch.setattr(translation, "_via_mymemory", m_wrap)
+
+
 def test_needs_translation_language_rules() -> None:
     assert translation.needs_translation(make_article("en")) is True
     assert translation.needs_translation(make_article("zh-CN")) is False
 
 
-GTX_JSON = '[[["市场因利率担忧而下滑","Markets slide","",null,10]],null,"en"]'
-MM_JSON = '{"responseData":{"translatedText":"市场 下滑"},"responseStatus":200}'
+def test_race_gtx_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_providers(
+        monkeypatch,
+        gtx=lambda t: "市场下滑",
+        mymemory=lambda t: (_ for _ in ()).throw(RuntimeError("blocked")),
+    )
+    out = asyncio.run(translation.translate_text("Markets slide",
+                                                 client=FakeClient()))
+    assert out == "市场下滑"
 
 
-def test_gtx_provider_first() -> None:
-    fake = FakeClient([GTX_JSON])
-    out = asyncio.run(translation.translate_text("Markets slide", client=fake))
-    assert out == "市场因利率担忧而下滑"
-    assert "translate.googleapis.com" in fake.calls[0]
+def test_race_falls_back_when_gtx_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    def blocked(t):
+        raise RuntimeError("gtx unreachable")
 
-
-def test_fallback_to_mymemory() -> None:
-    fake = FakeClient([RuntimeError("gtx blocked"), MM_JSON])
+    patch_providers(monkeypatch, gtx=blocked, mymemory=lambda t: "市场 下滑")
     out = asyncio.run(
-        translation.translate_text("Markets slide", client=fake, source_lang="en")
+        translation.translate_text("Markets slide", client=FakeClient(),
+                                   source_lang="en")
     )
     assert "市场" in out
-    assert len(fake.calls) == 2
-    assert "mymemory" in fake.calls[1]
 
 
-def test_all_providers_fail_raises() -> None:
-    fake = FakeClient([RuntimeError("x"), RuntimeError("y")])
+def test_all_fail_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(t):
+        raise RuntimeError("down")
+
+    patch_providers(monkeypatch, gtx=boom, mymemory=boom)
     with pytest.raises(RuntimeError, match="all translation providers failed"):
-        asyncio.run(translation.translate_text("hello", client=fake))
+        asyncio.run(translation.translate_text("hello", client=FakeClient()))
+
+
+def test_batch_roundtrip_preserves_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    titles = ["Alpha rises", "Beta falls", "Gamma holds"]
+
+    def fake_join(text: str) -> str:
+        mapping = dict(zip(titles, ["阿法上涨", "贝塔下跌", "伽马持稳"], strict=True))
+        return "\n".join(mapping[t] for t in text.splitlines())
+
+    def blocked(t: str) -> str:
+        raise RuntimeError("down")
+
+    patch_providers(monkeypatch, gtx=fake_join, mymemory=blocked)
+    out = asyncio.run(translation.translate_titles_batch(titles))
+    assert out == ["阿法上涨", "贝塔下跌", "伽马持稳"]
+
+
+def test_batch_mismatch_falls_back_to_original(monkeypatch: pytest.MonkeyPatch) -> None:
+    titles = ["One", "Two", "Three", "Four"]
+
+    def partial(text: str) -> str:
+        return "一\n二"
+
+    def blocked(t: str) -> str:
+        raise RuntimeError("down")
+
+    patch_providers(monkeypatch, gtx=partial, mymemory=blocked)
+    out = asyncio.run(translation.translate_titles_batch(titles))
+    assert out == ["一", "二", "Three", "Four"]

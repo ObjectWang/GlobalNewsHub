@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Final
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -46,6 +46,16 @@ def load_theme_sheet(theme: str) -> str:
     return (_THEMES_DIR / f"{name}.qss").read_text(encoding="utf-8")
 
 
+def _load_app_icon() -> QIcon:
+    """App icon from bundled resources (missing file -> default icon)."""
+    from core.utils.platform_utils import resources_dir
+
+    path = resources_dir() / "icons" / "globalnewshub.ico"
+    if not path.is_file():
+        path = Path("resources") / "icons" / "globalnewshub.ico"
+    return QIcon(str(path)) if path.is_file() else QIcon()
+
+
 def apply_theme(app: QApplication, theme: str) -> None:
     """Restyle the whole application instantly (P4.7 acceptance)."""
     app.setStyleSheet(load_theme_sheet(theme))
@@ -65,6 +75,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(_WINDOW_TITLE)
+        self.setWindowIcon(_load_app_icon())
         self.resize(1280, 800)
         self.setMinimumSize(960, 620)
         self._settings_path: Path | None = None

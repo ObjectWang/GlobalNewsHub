@@ -44,6 +44,26 @@ class NewsListModel(QAbstractListModel):
     def __init__(self) -> None:
         super().__init__()
         self._articles: list[Article] = []
+        self._translations: dict[str, str] = {}  # article_id -> zh title
+
+    def set_translation(self, article_id: str, zh_title: str) -> None:
+        """Attach a translated title; row re-renders with 译： line (#3)."""
+        if not zh_title:
+            return
+        self._translations[article_id] = zh_title
+        row = self.find_row(article_id)
+        if row >= 0:
+            self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
+
+    def clear_translations(self) -> None:
+        """Drop all cached title translations (fresh data arrival)."""
+        if not self._translations:
+            return
+        self._translations.clear()
+        if self._articles:
+            self.dataChanged.emit(
+                self.index(0, 0), self.index(len(self._articles) - 1, 0)
+            )
 
     # ------------------------------------------------------------------
     # Population API (called from the UI thread only; data arrives via
@@ -94,7 +114,7 @@ class NewsListModel(QAbstractListModel):
             return None
         article = self._articles[row]
         if role == Qt.ItemDataRole.DisplayRole:
-            return self._display_text(article)
+            return self._display_text(article, self._translations.get(article.id))
         if role == _TITLE_ROLE:
             return article.title
         if role == _SUMMARY_ROLE:
@@ -117,8 +137,10 @@ class NewsListModel(QAbstractListModel):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _display_text(article: Article) -> str:
+    def _display_text(article: Article, zh_title: str | None = None) -> str:
         meta = NewsListModel._meta_text(article)
+        if zh_title:
+            return f"{article.title}\n译：{zh_title}\n{meta}"
         return f"{article.title}\n{meta}"
 
     @staticmethod
@@ -151,7 +173,7 @@ class NewsListWidget(QWidget):
         font = QFont()
         font.setPointSize(10)
         self._view.setFont(font)
-        metrics_height = QFontMetrics(font).height() * 3 + 8
+        metrics_height = QFontMetrics(font).height() * 4  # title+译+meta rows
         self._view.setSpacing(2)
         self.setStyleSheet(f"QListView::item {{ height: {metrics_height}px; }}")
 
