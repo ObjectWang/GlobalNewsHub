@@ -19,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from threading import Thread
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, Signal
 
 from core.classifier.bert_classifier import BertClassifier
 from core.classifier.pipeline import ClassificationPipeline
@@ -62,7 +63,49 @@ def classify_article(
         article.region = region_decision.region
 
 
-class RefreshWorker(QThread):
+class _ThreadWorker(QObject):
+    """QObject worker executed on a plain ``threading.Thread``.
+
+    Signals emitted from the python thread are delivered queued to the
+    main thread, exactly like a QThread worker — but the wrapper has no
+    QThread C++ lifetime semantics, which proved fragile at interpreter
+    teardown on Windows (P5.1 investigation). ``wait()``/``is_running()``
+    mirror the QThread surface used by :mod:`main`.
+    """
+
+    def __init__(self, parent: object = None) -> None:
+        super().__init__(parent)
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        """Launch ``run_impl`` on a daemon thread (idempotent while alive)."""
+        if self.is_running():
+            return
+        self._thread = Thread(target=self._guarded_run, daemon=True)
+        self._thread.start()
+
+    def _guarded_run(self) -> None:
+        try:
+            self.run_impl()
+        except Exception:  # pragma: no cover - logged by implementations
+            logger.exception("%s failed", type(self).__name__)
+
+    def run_impl(self) -> None:
+        """Override with the blocking workload."""
+        raise NotImplementedError
+
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def wait(self, timeout_ms: int | None = None) -> bool:
+        timeout_s = None if timeout_ms is None else max(0.0, timeout_ms / 1000)
+        if self._thread is None:
+            return True
+        self._thread.join(timeout_s)
+        return not self._thread.is_alive()
+
+
+class RefreshWorker(_ThreadWorker):
     """Fetch every enabled source, classify and store; fully off-UI."""
 
     progress = Signal(str)
@@ -91,7 +134,7 @@ class RefreshWorker(QThread):
         self._rss_fetch = rss_fetch  # test seams
         self._rsshub_fetch = rsshub_fetch
 
-    def run(self) -> None:  # noqa: D102 - QThread override
+    def run_impl(self) -> None:
         try:
             stored = asyncio.run(self._refresh())
             self.articles_stored.emit(stored)
@@ -125,7 +168,7 @@ class RefreshWorker(QThread):
         return stored
 
 
-class QueryWorker(QThread):
+class QueryWorker(_ThreadWorker):
     """One read-only query per instance; replies once on results_ready."""
 
     results_ready = Signal(list)
@@ -168,9 +211,10 @@ class QueryWorker(QThread):
         """Single-article fetch for the detail pane (P4.4)."""
         return cls(db_path=db_path, kind="detail", article_id=article_id)
 
-    def run(self) -> None:  # noqa: D102 - QThread override
+    def run_impl(self) -> None:
         try:
             db = Database(self._db_path)
+            db.ensure_schema()  # fresh-install first query creates tables
             if self._kind == "list":
                 rows = list_articles(db, category=self._category or None,
                                      region=self._region or None, limit=self._limit)

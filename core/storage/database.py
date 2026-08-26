@@ -79,3 +79,17 @@ class Database:
             for script in scripts:
                 logger.info("Applying migration %s", script.name)
                 conn.executescript(script.read_text(encoding="utf-8"))
+
+    def ensure_schema(self) -> None:
+        """Initialize only when the core table is missing (cheap no-op otherwise).
+
+        Read-path workers call this so a fresh install renders an empty
+        list instead of ``no such table`` errors, without paying the full
+        migration/rebuild cost on every query.
+        """
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='articles'"
+            ).fetchone()
+        if row is None:
+            self.initialize()

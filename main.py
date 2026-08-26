@@ -13,14 +13,19 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Final
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from core.fetcher.scheduler import RefreshScheduler
-from core.utils.config import DEFAULT_SETTINGS_PATH, load_settings
+from core.utils import platform_utils
+from core.utils.config import load_settings
 from core.utils.logger import setup_logging
+from core.utils.platform_utils import (
+    data_dir,
+    default_settings_path,
+    resources_dir,
+)
 from ui.main_window import MainWindow, apply_theme
 from ui.news_detail import NewsDetailWidget
 from ui.news_list import NewsListWidget
@@ -29,8 +34,6 @@ from ui.sidebar import SidebarWidget
 from ui.workers import QueryWorker, RefreshWorker
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_SETTINGS_PATH: Final = DEFAULT_SETTINGS_PATH
 
 
 class _RefreshBridge(QObject):
@@ -79,6 +82,27 @@ class AppController(QObject):
                 )
                 self._scheduler.start()
 
+    def shutdown(self) -> None:
+        """Stop background activity and join threads BEFORE Qt teardown.
+
+        Called from ``QApplication.aboutToQuit``: letting interpreter
+        finalization destroy live QThread wrappers triggers fastfail
+        crashes on Windows (observed P5.1), so we wait for them here.
+        """
+        logger.info("shutdown: stopping scheduler and workers")
+        if self._scheduler is not None:
+            self._scheduler.stop()
+            self._scheduler = None
+        for attr in ("_refresh_worker", "_query_worker"):
+            worker = getattr(self, attr)
+            if worker is None:
+                continue
+            try:
+                if worker.is_running():
+                    worker.wait(5000)
+            except RuntimeError:
+                pass  # C++ side already destroyed via deleteLater
+
     # -- slots ------------------------------------------------------------------
 
     def reload_articles(self) -> None:
@@ -94,8 +118,7 @@ class AppController(QObject):
         worker.results_ready.connect(
             lambda rows, g=generation: self._on_list_results(g, rows)
         )
-        self._replace_query_worker(worker)
-        worker.start()
+        self._spawn(worker)
 
     def on_search(self, text: str) -> None:
         """FTS5 live filtering (P4.5): empty query restores browse mode."""
@@ -109,8 +132,7 @@ class AppController(QObject):
         worker.results_ready.connect(
             lambda rows, g=generation: self._on_list_results(g, rows)
         )
-        self._replace_query_worker(worker)
-        worker.start()
+        self._spawn(worker)
         self._win.set_status(f"搜索：{text}")
 
     def on_article_selected(self, article_id: str) -> None:
@@ -120,20 +142,18 @@ class AppController(QObject):
         worker.results_ready.connect(
             lambda rows, g=generation: self._on_detail_results(g, rows)
         )
-        self._replace_query_worker(worker)
-        worker.start()
+        self._spawn(worker)
 
     def start_refresh(self) -> None:
         """Launch a RefreshWorker unless one is already running."""
-        if self._refresh_worker is not None and self._refresh_worker.isRunning():
+        if self._refresh_worker is not None and self._refresh_worker.is_running():
             self._win.set_status("刷新进行中…")
             return
         settings = load_settings(self._settings_path)
-        root = Path(__file__).resolve().parent
         self._refresh_worker = RefreshWorker(
             db_path=self._db_path(),
-            sources_path=root / "config" / "sources.yaml",
-            models_dir=root / "resources" / "models",
+            sources_path=default_settings_path().parent / "sources.yaml",
+            models_dir=resources_dir() / "models",
             public_fallback_url=str(
                 settings.get("rsshub", {}).get("public_fallback_url",
                                                "https://rsshub.app")),
@@ -147,13 +167,15 @@ class AppController(QObject):
             lambda n: self._win.set_status(f"刷新完成，新增 {n} 篇"))
         self._refresh_worker.failed.connect(
             lambda err: self._win.set_status(f"刷新失败：{err}"))
-        self._refresh_worker.finished.connect(self._refresh_worker.deleteLater)
-        self._refresh_worker.finished.connect(
-            lambda: setattr(self, "_refresh_worker", None))
         self._refresh_worker.start()
         self._win.set_status("正在刷新…")
 
     # -- internals -----------------------------------------------------------
+
+    def _spawn(self, worker) -> None:
+        """Track and launch a worker (thread teardown is join-based)."""
+        self._query_worker = worker
+        worker.start()
 
     def _on_list_results(self, generation: int, rows: list) -> None:
         if generation != self._generation:
@@ -182,28 +204,27 @@ class AppController(QObject):
         settings = load_settings(self._settings_path)
         raw = str(settings.get("paths", {}).get("database", "data/globalnewshub.db"))
         path = Path(raw)
-        return path if path.is_absolute() else Path(__file__).resolve().parent / path
+        # Relative settings paths anchor at the app root's parent so that
+        # dev ("data/...") and frozen (<exe_dir>/data/...) both resolve
+        # into the writable tree.
+        return path if path.is_absolute() else data_dir().parent / path
 
-    def _replace_query_worker(self, worker: QueryWorker) -> None:
-        old = self._query_worker
-        self._query_worker = worker
-        if old is not None:
-            old.finished.connect(old.deleteLater)
-
-
-def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False
+def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False,
+              settings_path: Path | None = None
               ) -> tuple[QApplication, MainWindow]:
     """Build app+window+controller without entering the event loop.
 
     ``load_initial=False`` keeps tests free of background threads;
-    ``auto_refresh`` is enabled only by :func:`main`.
+    ``auto_refresh`` is enabled only by :func:`main`; ``settings_path``
+    is injectable for tests (defaults to the frozen-aware template).
     """
+    sp = Path(settings_path) if settings_path else default_settings_path()
     app = QApplication.instance() or QApplication(sys.argv)
-    settings = load_settings(_DEFAULT_SETTINGS_PATH)
+    settings = load_settings(sp)
     apply_theme(app, str(settings.get("ui", {}).get("theme", "light")))
 
     win = MainWindow()
-    win.attach_settings_path(_DEFAULT_SETTINGS_PATH)
+    win.attach_settings_path(sp)
 
     sidebar = SidebarWidget()
     win.attach_sidebar(sidebar)
@@ -220,8 +241,9 @@ def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False
     detail = NewsDetailWidget()
     win.replace_detail(detail)
 
-    controller = AppController(win, news_list, detail, _DEFAULT_SETTINGS_PATH)
+    controller = AppController(win, news_list, detail, sp)
     controller.wire(auto_refresh=auto_refresh)
+    app.aboutToQuit.connect(controller.shutdown)
 
     win.refresh_requested.connect(controller.start_refresh)
     win.search_submitted.connect(controller.on_search)
@@ -235,15 +257,25 @@ def bootstrap(*, load_initial: bool = True, auto_refresh: bool = False
 
 
 def main() -> int:
-    """Entry point: bootstrap, show, schedule, execute."""
-    settings = load_settings(_DEFAULT_SETTINGS_PATH)
-    log_file = Path(__file__).resolve().parent / str(
-        settings.get("paths", {}).get("log_file", "data/logs/globalnewshub.log")
+    """Entry point: bootstrap, show, schedule, execute.
+
+    ``--smoke``: auto-quit shortly after showing (packaged-build check).
+    """
+    settings = load_settings(default_settings_path())
+    raw_log = str(settings.get("paths", {}).get("log_file",
+                                                "data/logs/globalnewshub.log"))
+    log_file = Path(raw_log)
+    setup_logging(
+        log_file=log_file if log_file.is_absolute() else data_dir().parent / log_file
     )
-    setup_logging(log_file=log_file)
-    logger.info("GlobalNewsHub starting")
+    logger.info("GlobalNewsHub starting (frozen=%s)", platform_utils.is_frozen())
     app, win = bootstrap(load_initial=True, auto_refresh=True)
     win.show()
+    if "--smoke" in sys.argv:
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(4000, app.quit)
+        logger.info("smoke mode: quitting in 4s")
     try:
         return app.exec()
     finally:

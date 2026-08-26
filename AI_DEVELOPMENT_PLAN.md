@@ -211,6 +211,36 @@ python scripts/export_onnx.py --checkpoint data/checkpoints/category \
     --name category_classifier
 ```
 
+## Phase 5 打包发布 ✅
+
+| ID   | 产出物 | 验收 |
+| ---- | ------ | ---- |
+| P5.1 | GlobalNewsHub.spec（onedir） | ✅ 打包成功，含 RSSHub 二进制 + INT8 模型 + 迁移 SQL + 主题；`--smoke` 自检 EXIT=0，exe 旁自动建库 |
+| P5.2 | LICENSE-THIRD-PARTY | ✅ LGPL/MIT/Apache/BSD 全覆盖（PySide6、RSSHub、onnxruntime、transformers 等） |
+| P5.3 | README.md | ✅ 源码运行/打包/训练三条路径按步骤可复现 |
+
+### Phase 5 关键决策与踩坑记录
+
+1. **onedir 而非 onefile**：§1.3 冷启动 ≤3s 排除自解压 onefile；UPX 一律
+   关闭（杀软误报，§10）。
+2. **体积达标路径**：467MB → 328.9MB（安装）→ **压缩包 154.5MB ≤300MB ✅**。
+   手段：excludes 掉 transformers/huggingface_hub/hf_xet/sklearn（约 -58MB，
+   tokenizer 改由 `tokenizers` 直读 `tokenizer.json`）；TOC 过滤 QML/Quick/
+   Pdf/OpenGL/Network/translations/opengl32sw（Qt 纯 Widgets 应用全用不到）。
+3. **tokenizer 双路加载**：`_load_tokenizer` 优先 AutoTokenizer，frozen 下
+   ImportError 时回退 `_TokenizersAdapter`（tokenizers 库直读），与 HF 输出
+   逐字节一致（含空 pair 视为单序列语义），奇偶校验测试锁定。
+4. **frozen 路径锚点**：新增 `core/utils/platform_utils.py`
+   （app_root/_MEIPASS 只读、data_dir=exe旁可写）；RSSHub 日志、数据库、
+   应用日志全部改走锚点。SQL 迁移文件必须显式加入 spec datas。
+5. **QThread → threading.Thread 重构（关键修复）**：QueryWorker/RefreshWorker
+   改为 QObject + 纯 python 守护线程（信号跨线程投递语义不变）。原 QThread
+   包装器在解释器退出阶段触发 Windows fastfail（0xC0000409，faulthandler
+   无法捕获）；经 X1/X2 对照实验定位后整体替换，`aboutToQuit→shutdown()`
+   统一 join。公共 API（start/wait/is_running）兼容。
+6. **冒烟自检协议**：`--smoke` 参数启动 4s 后自动退出 + offscreen 平台，
+   打包流水线可用作 CI 门禁；验收点 = EXIT 0 + exe 旁 db 落盘 + 日志无错。
+
 ## 备注
 
 - resources/rsshub-server* 为 scripts/build_rsshub.sh 的本地产物，不入库

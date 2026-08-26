@@ -30,6 +30,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import IO
 
+from core.utils import platform_utils
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PORT: int = 1200                    # settings.yaml rsshub.port
@@ -41,11 +43,15 @@ _HEALTH_POLL_INTERVAL_SECONDS = 0.3
 _HEALTH_REQUEST_TIMEOUT_SECONDS = 1.0
 _MAX_PORT_ATTEMPTS = 100
 
-# Resource layout per section 5. PyInstaller builds (P5.1) can override
-# via the binary_path constructor argument.
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_RESOURCES_DIR = _PROJECT_ROOT / "resources"
-_LOG_PATH = _PROJECT_ROOT / "data" / "logs" / "rsshub-server.log"
+# Resource layout per section 5, frozen-aware (P5.1): binaries resolve
+# under the read-only app root (_MEIPASS when bundled), the server log
+# under the writable data dir next to the executable.
+_RESOURCES_DIR = platform_utils.resources_dir()
+
+
+def log_path() -> Path:
+    """Filesystem path of the embedded RSSHub server log."""
+    return platform_utils.data_dir() / "logs" / "rsshub-server.log"
 
 _BINARY_NAME_BY_PLATFORM: dict[str, str] = {
     "win32": "rsshub-server.exe",
@@ -66,8 +72,9 @@ def _port_is_free(port: int) -> bool:
 
 def _open_log() -> IO[bytes]:
     """Open (creating parents) the RSSHub server log in append mode."""
-    _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    return _LOG_PATH.open("ab")
+    path = log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path.open("ab")
 
 
 class RSSHubManager:
@@ -162,7 +169,7 @@ class RSSHubManager:
             if exit_code is not None:
                 logger.error(
                     "RSSHub exited during startup with code %s; see %s",
-                    exit_code, _LOG_PATH,
+                    exit_code, log_path(),
                 )
                 self._process = None
                 self._close_log()

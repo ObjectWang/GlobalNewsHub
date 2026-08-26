@@ -1,0 +1,109 @@
+GlobalNewsHub — Third-Party Software Notices and Licenses
+==========================================================
+
+This application bundles and redistributes the third-party software
+listed below. Each component is used under the terms of its own
+license; the applicable license texts are distributed with the
+installed application (see `share/licenses/`) or can be obtained from
+the upstream project pages referenced here.
+
+Bundled Python packages (runtime)
+---------------------------------
+
+PySide6 / shiboken6          LGPL-3.0-only
+    Qt for Python, https://pyside.org — used via dynamic linking as an
+    unmodified system library; users may replace the bundled copy.
+    (c) Qt Company Ltd.
+
+onnxruntime                  MIT
+    https://github.com/microsoft/onnxruntime
+    (c) Microsoft Corporation. All rights reserved.
+
+transformers                 Apache-2.0
+    https://github.com/huggingface/transformers
+    (c) The Hugging Face team and contributors.
+
+tokenizers                   Apache-2.0
+    https://github.com/huggingface/tokenizers
+
+huggingface-hub              Apache-2.0
+    https://github.com/huggingface/huggingface_hub
+
+numpy                        BSD-3-Clause
+    https://numpy.org
+
+aiohttp                      Apache-2.0
+    https://github.com/aio-libs/aiohttp
+    (with frozen dependencies: aiosignal, frozenlist, multidict,
+     yarl, propcache — each Apache-2.0 / MIT per upstream metadata)
+
+feedparser                   BSD-2-Clause
+    https://github.com/kurtmckee/feedparser
+
+beautifulsoup4               MIT
+    https://www.crummy.com/software/BeautifulSoup/
+
+soupsieve                    MIT
+    https://github.com/facelessuser/soupsieve
+
+lxml                         BSD-3-Clause
+    https://lxml.de
+    (links bundled libxml2/libiconv; see their notices in share/licenses)
+
+APScheduler                  MIT
+    https://apscheduler.readthedocs.io
+
+PyYAML                       MIT
+    https://pyyaml.org
+    (bundles libyaml, MIT, (c) Kirill Simonov)
+
+typing_extensions            MIT-0 / PSF-2.0 (per upstream)
+
+
+Bundled native components
+-------------------------
+
+RSSHub server                MIT
+    https://docs.rsshub.app — packaged as standalone binaries
+    (rsshub-server.exe / -mac / -linux) built from upstream sources via
+    scripts/build_rsshub.sh.
+    (c) DIYgod and RSSHub contributors.
+
+Node.js runtime              MIT
+    Embedded inside the packaged RSSHub binaries by @yao-pkg/pkg.
+    https://nodejs.org
+
+Qt6 runtime libraries        LGPL-3.0-only
+    Shipped with PySide6; dynamically linked, replaceable.
+
+SQLite                       Public Domain
+    https://sqlite.org — used through the CPython stdlib sqlite3 module.
+
+
+Model artifact
+--------------
+
+category_classifier_int8.onnx
+    Fine-tuned from hfl/chinese-roberta-wwm-ext
+    (https://huggingface.co/hfl/chinese-roberta-wwm-ext), whose weights
+    were released under Apache-2.0 by HFL, Harbin Institute of Technology.
+    Training data: THUCNews (Tsinghua University) subsets plus locally
+    annotated samples. Provided for research/personal use.
+
+
+Python runtime
+--------------
+
+CPython                      PSF-2.0
+    https://www.python.org
+
+
+Full license texts
+------------------
+
+Copies of the LGPL-3.0, Apache-2.0, MIT and BSD licenses are included
+in the `share/licenses` directory of this distribution, or see:
+https://www.gnu.org/licenses/lgpl-3.0.txt
+https://www.apache.org/licenses/LICENSE-2.0.txt
+https://opensource.org/licenses/MIT
+https://opensource.org/licenses/BSD-3-Clause

@@ -186,7 +186,7 @@ def test_scheduler_run_once_and_lifecycle(qapp) -> None:
     sched.stop()
 
 
-def test_bootstrap_assembles_full_ui(qapp, tmp_path: Path, monkeypatch) -> None:
+def test_bootstrap_assembles_full_ui(qapp, tmp_path: Path) -> None:
     """Smoke: every Phase 4 widget lands in its window slot, no exec()."""
     import main as app_main
     from core.utils.config import save_settings
@@ -198,8 +198,7 @@ def test_bootstrap_assembles_full_ui(qapp, tmp_path: Path, monkeypatch) -> None:
     settings_file = tmp_path / "settings.yaml"
     save_settings({"paths": {"database": str(tmp_path / "b.db")}}, settings_file)
 
-    monkeypatch.setattr(app_main, "_DEFAULT_SETTINGS_PATH", settings_file)
-    app, win = app_main.bootstrap(load_initial=False)
+    app, win = app_main.bootstrap(load_initial=False, settings_path=settings_file)
 
     try:
         assert win.sidebar_slot.findChildren(SidebarWidget)
