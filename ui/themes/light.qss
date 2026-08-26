@@ -1,0 +1,61 @@
+/* GlobalNewsHub — light theme (PRD P4.7) */
+
+QMainWindow, QDialog {
+    background: #f5f6f8;
+}
+
+QLabel {
+    color: #1c1e21;
+}
+
+QGroupBox {
+    border: 1px solid #d0d3d8;
+    border-radius: 6px;
+    margin-top: 10px;
+    color: #333;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+}
+
+QListView {
+    background: #ffffff;
+    alternate-background-color: #f0f2f5;
+    color: #1c1e21;
+}
+QListView::item:selected {
+    background: #1667d9;
+    color: #ffffff;
+}
+
+QLineEdit, QSpinBox, QComboBox, QTextBrowser {
+    background: #ffffff;
+    color: #1c1e21;
+    border: 1px solid #c9ccd1;
+    border-radius: 4px;
+    padding: 3px;
+}
+
+QPushButton, QDialogButtonBox QPushButton {
+    background: #e8eaed;
+    border: 1px solid #c9ccd1;
+    border-radius: 4px;
+    padding: 4px 14px;
+}
+QPushButton:hover {
+    background: #dde0e5;
+}
+
+QStatusBar {
+    background: #eceef1;
+    color: #555;
+}
+
+QMenuBar {
+    background: #eceef1;
+}
+QMenuBar::item:selected {
+    background: #d5dae1;
+}

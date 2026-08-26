@@ -177,13 +177,60 @@ def list_articles(
 
 
 def search_articles(db: Database, query: str, *, limit: int = 200) -> list[Article]:
-    """Full-text search over title/summary/content using FTS5 MATCH syntax."""
+    """Full-text search over title/summary/content.
+
+    Uses FTS5 MATCH (trigram tokenizer since migration 002), which
+    supports CJK substring matching for queries of >= 3 characters.
+    Shorter queries and MATCH-syntax failures fall back to a LIKE scan,
+    so a 2-character Chinese query such as "芯片" still finds results.
+    """
+    needle = query.strip()
+    if not needle:
+        return []
+    if _needs_like_fallback(needle):
+        return _search_articles_like(db, needle, limit)
+    try:
+        with db.session() as conn:
+            rows = conn.execute(
+                "SELECT a.* FROM articles AS a"
+                " JOIN articles_fts ON articles_fts.rowid = a.rowid"
+                " WHERE articles_fts MATCH ? ORDER BY rank LIMIT ?",
+                (f'"{needle.replace(chr(34), chr(34) * 2)}"', limit),
+            ).fetchall()
+        return [_row_to_article(row) for row in rows]
+    except sqlite3.OperationalError:
+        logger.info("FTS MATCH failed for %r; falling back to LIKE", query)
+        return _search_articles_like(db, needle, limit)
+
+
+_CJK_RANGE = (
+    (0x4E00, 0x9FFF),   # CJK unified ideographs
+    (0x3400, 0x4DBF),   # extension A
+    (0xF900, 0xFAFF),   # compatibility ideographs
+)
+
+
+def _contains_cjk(text: str) -> bool:
+    """Whether ``text`` contains any CJK ideograph."""
+    return any(
+        lo <= ord(char) <= hi for char in text for lo, hi in _CJK_RANGE
+    )
+
+
+def _needs_like_fallback(needle: str) -> bool:
+    """LIKE is required for sub-trigram-length queries containing CJK."""
+    return len(needle) < 3 and _contains_cjk(needle)
+
+
+def _search_articles_like(db: Database, needle: str, limit: int) -> list[Article]:
+    """Substring scan fallback (no index; fine at local-database scale)."""
+    pattern = f"%{needle}%"
     with db.session() as conn:
         rows = conn.execute(
-            "SELECT a.* FROM articles AS a"
-            " JOIN articles_fts ON articles_fts.rowid = a.rowid"
-            " WHERE articles_fts MATCH ? ORDER BY rank LIMIT ?",
-            (query, limit),
+            "SELECT * FROM articles"
+            " WHERE title LIKE ? OR summary LIKE ? OR content LIKE ?"
+            " ORDER BY published_at DESC, rowid DESC LIMIT ?",
+            (pattern, pattern, pattern, limit),
         ).fetchall()
     return [_row_to_article(row) for row in rows]
 

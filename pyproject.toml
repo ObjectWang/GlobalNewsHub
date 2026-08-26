@@ -13,7 +13,8 @@ description = "Zero-dependency desktop news aggregator: embedded RSSHub + BERT c
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "PySide6>=6.5",
+    # 6.8.x pinned: the 6.11 wheel aborts at import on Windows (DLL clash)
+    "PySide6>=6.5,<6.9",
     "aiohttp>=3.9",
     "feedparser>=6.0.10",
     "beautifulsoup4>=4.12",
