@@ -54,6 +54,7 @@ class HttpClient:
         timeout_seconds: float = REQUEST_TIMEOUT,
         max_retry: int = MAX_RETRY,
         user_agent: str = DEFAULT_USER_AGENT,
+        proxy: str | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         session_factory: Callable[..., Any] | None = None,
     ) -> None:
@@ -61,6 +62,7 @@ class HttpClient:
         self._max_retry = max_retry
         self._headers = {"User-Agent": user_agent}
         self._sleep = sleep
+        self._proxy = proxy or None
         self._session_factory = session_factory or aiohttp.ClientSession
 
     async def get_text(self, url: str) -> str:
@@ -76,7 +78,9 @@ class HttpClient:
         for attempt in range(1 + self._max_retry):
             try:
                 async with self._session_factory(headers=self._headers) as session:
-                    async with session.get(url, timeout=self._timeout) as response:
+                    async with session.get(
+                        url, timeout=self._timeout, proxy=self._proxy
+                    ) as response:
                         response.raise_for_status()
                         body: str = await response.text()
                         return body
@@ -86,8 +90,9 @@ class HttpClient:
                 last_error = exc
                 if attempt < self._max_retry:
                     logger.warning(
-                        "GET %s failed (attempt %d/%d): %s; retrying in %.0fs",
-                        url, attempt + 1, 1 + self._max_retry, exc, delay,
+                        "GET %s failed (attempt %d/%d): %s: %s; retrying in %.0fs",
+                        url, attempt + 1, 1 + self._max_retry,
+                        type(exc).__name__, exc, delay,
                     )
                     await self._sleep(delay)
                     delay = min(delay * 2, _BACKOFF_CAP_SECONDS)

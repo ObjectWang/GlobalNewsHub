@@ -150,6 +150,7 @@ class AppController(QObject):
             self._win.set_status("刷新进行中…")
             return
         settings = load_settings(self._settings_path)
+        network_cfg = settings.get("network", {})
         self._refresh_worker = RefreshWorker(
             db_path=self._db_path(),
             sources_path=default_settings_path().parent / "sources.yaml",
@@ -159,6 +160,9 @@ class AppController(QObject):
                                                "https://rsshub.app")),
             max_concurrent_fetches=int(
                 settings.get("scheduler", {}).get("max_concurrent_fetches", 5)),
+            proxy=str(network_cfg.get("proxy") or "") or None,
+            rsshub_port=int(settings.get("rsshub", {}).get("port", 1200)),
+            autostart_rsshub=True,
         )
         self._refresh_worker.progress.connect(
             lambda msg: self._win.set_status(f"抓取 {msg}"))

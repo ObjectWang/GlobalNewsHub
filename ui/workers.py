@@ -35,6 +35,7 @@ from core.fetcher.fetch_orchestrator import (
 from core.models import Article
 from core.storage.crud import get_article, insert_article, list_articles, search_articles
 from core.storage.database import Database
+from core.utils.network import HttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,10 @@ class RefreshWorker(_ThreadWorker):
         models_dir: Path | None = None,
         public_fallback_url: str = PUBLIC_FALLBACK_URL,
         max_concurrent_fetches: int = 5,
+        proxy: str | None = None,
+        rsshub_port: int = 1200,
+        autostart_rsshub: bool = False,
+        rsshub=None,
         rss_fetch=None,
         rsshub_fetch=None,
         parent=None,
@@ -131,6 +136,10 @@ class RefreshWorker(_ThreadWorker):
         self._models_dir = Path(models_dir) if models_dir else None
         self._public_fallback_url = public_fallback_url
         self._max_concurrent = max_concurrent_fetches
+        self._proxy = proxy or None
+        self._rsshub_port = rsshub_port
+        self._autostart_rsshub = autostart_rsshub
+        self._rsshub = rsshub
         self._rss_fetch = rss_fetch  # test seams
         self._rsshub_fetch = rsshub_fetch
 
@@ -145,16 +154,26 @@ class RefreshWorker(_ThreadWorker):
 
     async def _refresh(self) -> list[Article]:
         sources = [s for s in load_sources(self._sources_path) if s.enabled]
-        orchestrator = FetchOrchestrator(
-            public_fallback_url=self._public_fallback_url,
-            max_concurrent_fetches=self._max_concurrent,
-            rss_fetch=self._rss_fetch,
-            rsshub_fetch=self._rsshub_fetch,
+        http_client = (
+            HttpClient(proxy=self._proxy) if self._proxy else None
         )
-        results = await orchestrator.fetch_all(sources)
+        manager, rsshub = self._ensure_rsshub()
+        try:
+            orchestrator = FetchOrchestrator(
+                rsshub=rsshub,
+                public_fallback_url=self._public_fallback_url,
+                max_concurrent_fetches=self._max_concurrent,
+                http_client=http_client,
+                rss_fetch=self._rss_fetch,
+                rsshub_fetch=self._rsshub_fetch,
+            )
+            results = await orchestrator.fetch_all(sources)
+        finally:
+            if manager is not None:
+                manager.stop()
 
         db = Database(self._db_path)  # thread-local connection
-        db.initialize()
+        db.ensure_schema()
         pipeline, region = _load_classifiers(self._models_dir)
 
         stored: list[Article] = []
@@ -166,6 +185,27 @@ class RefreshWorker(_ThreadWorker):
                 if inserted_id == article.id:  # dedup returns existing id
                     stored.append(article)
         return stored
+
+    def _ensure_rsshub(self):
+        """Start the embedded server unless a manager was injected.
+
+        Returns ``(manager_or_None, rsshub_or_None)``; the caller stops the
+        manager after fetching. Auto-start is opt-in so tests stay offline.
+        """
+        if self._rsshub is not None:
+            return None, self._rsshub
+        if not self._autostart_rsshub:
+            return None, None
+        from core.rsshub.manager import RSSHubManager
+
+        manager = RSSHubManager(port=self._rsshub_port)
+        try:
+            if manager.start():
+                return manager, manager
+            logger.error("Embedded RSSHub failed to start; public fallback only")
+        except Exception:
+            logger.exception("Embedded RSSHub unavailable; public fallback only")
+        return None, None
 
 
 class QueryWorker(_ThreadWorker):

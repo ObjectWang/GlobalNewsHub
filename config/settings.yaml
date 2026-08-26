@@ -21,6 +21,8 @@ network:
   max_retry: 3                          # MAX_RETRY：最大重试次数
   user_agent: "GlobalNewsHub/1.0 (+contact@email.com)"
   respect_robots_txt: true
+  proxy: ""                             # 可选 HTTP(S) 代理，如 http://127.0.0.1:7890；
+                                        # 留空=直连。境外源在无代理网络下不可达属预期
 
 # 定时任务（APScheduler ≥ 3.10，§1.2）
 scheduler:
